@@ -2,7 +2,6 @@ import winreg
 import re
 import tkinter as tk
 from tkinter import messagebox
-import time
 import os
 import shutil
 
@@ -29,7 +28,7 @@ def check_software_installed(software_name):
                     subkey = winreg.OpenKey(key, subkey_name)
                     try:
                         display_name, _ = winreg.QueryValueEx(subkey, "DisplayName")
-                        if re.search(escape_regex(software_name), display_name, re.IGNORECASE):
+                        if software_name.lower() in display_name.lower():  # 宽松匹配
                             try:
                                 install_location = winreg.QueryValueEx(subkey, "InstallLocation")[0]
                             except FileNotFoundError:
@@ -72,7 +71,7 @@ def delete_software(software_name, install_path):
                         subkey_count += 1
                         subkey = winreg.OpenKey(key, subkey_name)
                         display_name, _ = winreg.QueryValueEx(subkey, "DisplayName")
-                        if re.search(escape_regex(software_name), display_name, re.IGNORECASE):
+                        if software_name.lower() in display_name.lower():
                             winreg.DeleteKey(key, subkey_name)
                             break
                     except OSError:
@@ -104,12 +103,7 @@ def delete_all_installed_software():
 def start_search():
     """开始查询软件是否安装"""
     software_names = text_area.get("1.0", "end").splitlines()
-    waiting_label = tk.Label(root, text="正在查询...")
-    waiting_label.pack(pady=20)
-    root.update()
-    time.sleep(2)
-    waiting_label.destroy()
-    result_label.config(text="")
+    result_label.config(text="")  # 清空结果
     results = ""
     for software_name in software_names:
         if software_name.strip():
@@ -125,13 +119,13 @@ def start_search():
 # GUI 构建
 root = tk.Tk()
 root.title("软件安装查询工具")
-root.geometry("800x800")
+root.geometry("800x600")
 
 # 用户手动输入软件名称
-text_area = tk.Text(root, height=15, width=100)
+text_area = tk.Text(root, height=10, width=80)
 text_area.pack(pady=10)
 
-result_label = tk.Label(root, text="", wraplength=550, height=15, width=100, anchor="w", justify="left")
+result_label = tk.Label(root, text="", wraplength=700, height=20, anchor="nw", justify="left", bg="#f0f0f0")
 result_label.pack(pady=10)
 
 search_button = tk.Button(root, text="开始查询", command=start_search)
