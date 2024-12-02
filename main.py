@@ -13,14 +13,15 @@ def escape_regex(s):
 
 def check_software_installed(software_name):
     """
-    检查软件是否安装，支持模糊查询，覆盖32位和64位注册表。
+    检查软件是否安装，支持模糊查询，覆盖32位和64位注册表及用户级注册表。
     :param software_name: 要检查的软件名称
     :return: (bool, str) 是否安装，安装路径（可能为空）
     """
-    def search_in_registry(key_path):
+
+    def search_in_registry(key_path, root_key):
         try:
             print(f"正在搜索注册表路径: {key_path}")
-            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path)
+            key = winreg.OpenKey(root_key, key_path)
             subkey_count = 0
             while True:
                 try:
@@ -45,17 +46,38 @@ def check_software_installed(software_name):
             return False, "未找到安装路径"
         return False, "未找到安装路径"
 
+    # 搜索注册表路径，包括系统和用户级安装
     registry_paths = [
-        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
-        r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+        (r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", winreg.HKEY_LOCAL_MACHINE),
+        (r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall", winreg.HKEY_LOCAL_MACHINE),
+        (r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", winreg.HKEY_CURRENT_USER),
+        (r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall", winreg.HKEY_CURRENT_USER),
     ]
-    for path in registry_paths:
-        installed, location = search_in_registry(path)
+
+    for path, root_key in registry_paths:
+        installed, location = search_in_registry(path, root_key)
         if installed:
             return True, location
 
     print(f"未找到与 \"{software_name}\" 匹配的软件")
     return False, "未找到安装路径"
+
+
+def search_in_filesystem(software_name):
+    """在文件系统中查找软件"""
+    potential_paths = [
+        os.environ.get("PROGRAMFILES", ""),  # 默认安装路径
+        os.environ.get("PROGRAMFILES(X86)", ""),  # 32位安装路径
+        os.environ.get("LOCALAPPDATA", ""),  # 用户本地应用路径
+        os.environ.get("APPDATA", ""),  # 用户漫游应用路径
+    ]
+    for path in potential_paths:
+        if path and os.path.exists(path):
+            for root, dirs, files in os.walk(path):
+                for file in files:
+                    if software_name.lower() in file.lower():
+                        return True, root
+    return False, "未找到文件路径"
 
 
 def delete_software(software_name, install_path):
@@ -101,6 +123,9 @@ def delete_all_installed_software():
     for software_name in software_names:
         if software_name.strip():
             installed, install_path = check_software_installed(software_name.strip())
+            if not installed:
+                # 如果未在注册表中找到，尝试文件系统搜索
+                installed, install_path = search_in_filesystem(software_name.strip())
             if installed:
                 try:
                     delete_software(software_name.strip(), install_path)
@@ -119,6 +144,9 @@ def start_search():
     for software_name in software_names:
         if software_name.strip():
             installed, install_path = check_software_installed(software_name.strip())
+            if not installed:
+                # 如果未在注册表中找到，尝试文件系统搜索
+                installed, install_path = search_in_filesystem(software_name.strip())
             status = "已安装" if installed else "未安装"
             results += f"{software_name}: {status}"
             if installed:
