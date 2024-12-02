@@ -116,6 +116,7 @@ def start_search():
     result_label.config(text=results)
 
 
+
 # GUI 构建
 root = tk.Tk()
 root.title("软件安装查询工具")
