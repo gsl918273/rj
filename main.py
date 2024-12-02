@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import messagebox
 import os
 import shutil
+import stat
 
 
 def escape_regex(s):
@@ -54,7 +55,6 @@ def check_software_installed(software_name):
         """尝试从卸载字符串中提取安装路径"""
         if uninstall_string and os.path.exists(uninstall_string):
             return os.path.dirname(uninstall_string)
-        # 如果卸载字符串是命令路径，提取目录部分
         match = re.search(r"\"(.*?)\"", uninstall_string)
         if match:
             potential_path = match.group(1)
@@ -98,6 +98,12 @@ def search_in_filesystem(software_name):
 
 def delete_software(software_name, install_path):
     """删除软件及其安装路径"""
+
+    def make_writable(func, path, _):
+        """尝试修改权限以便删除"""
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+
     try:
         print(f"开始删除软件: {software_name}")
         registry_paths = [
@@ -126,7 +132,7 @@ def delete_software(software_name, install_path):
                 continue
 
         if install_path and os.path.exists(install_path):
-            shutil.rmtree(install_path)
+            shutil.rmtree(install_path, onerror=make_writable)
             print(f"成功删除安装路径: {install_path}")
     except Exception as e:
         print(f"删除软件 \"{software_name}\" 时出现错误: {e}")
@@ -179,7 +185,7 @@ root.title("软件安装查询工具")
 root.geometry("800x600")
 
 # 用户手动输入软件名称
-text_area = tk.Text(root, height=10, width=80)
+text_area = tk.Text(root, height=20, width=80)
 text_area.pack(pady=10)
 
 result_label = tk.Label(root, text="", wraplength=700, height=20, anchor="nw", justify="left", bg="#f0f0f0")
