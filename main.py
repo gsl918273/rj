@@ -33,8 +33,12 @@ def check_software_installed(software_name):
                         if software_name.lower() in display_name.lower():  # 宽松匹配
                             try:
                                 install_location = winreg.QueryValueEx(subkey, "InstallLocation")[0]
+                                if not install_location:  # 如果 InstallLocation 为空
+                                    raise FileNotFoundError
                             except FileNotFoundError:
-                                install_location = "路径信息不可用"
+                                # 尝试使用 UninstallString
+                                uninstall_string = winreg.QueryValueEx(subkey, "UninstallString")[0]
+                                install_location = parse_install_path_from_uninstall(uninstall_string)
                             print(f"找到匹配的软件: {display_name}, 安装路径: {install_location}")
                             return True, install_location
                     except FileNotFoundError:
@@ -45,6 +49,18 @@ def check_software_installed(software_name):
             print(f"未找到注册表路径 {key_path}，错误信息: {e}")
             return False, "未找到安装路径"
         return False, "未找到安装路径"
+
+    def parse_install_path_from_uninstall(uninstall_string):
+        """尝试从卸载字符串中提取安装路径"""
+        if uninstall_string and os.path.exists(uninstall_string):
+            return os.path.dirname(uninstall_string)
+        # 如果卸载字符串是命令路径，提取目录部分
+        match = re.search(r"\"(.*?)\"", uninstall_string)
+        if match:
+            potential_path = match.group(1)
+            if os.path.exists(potential_path):
+                return os.path.dirname(potential_path)
+        return "路径信息不可用"
 
     # 搜索注册表路径，包括系统和用户级安装
     registry_paths = [
