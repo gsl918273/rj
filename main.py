@@ -19,6 +19,7 @@ def check_software_installed(software_name):
     """
     def search_in_registry(key_path):
         try:
+            print(f"正在搜索注册表路径: {key_path}")
             key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path)
             subkey_count = 0
             while True:
@@ -33,12 +34,14 @@ def check_software_installed(software_name):
                                 install_location = winreg.QueryValueEx(subkey, "InstallLocation")[0]
                             except FileNotFoundError:
                                 install_location = "路径信息不可用"
+                            print(f"找到匹配的软件: {display_name}, 安装路径: {install_location}")
                             return True, install_location
                     except FileNotFoundError:
                         continue
                 except OSError:
                     break
-        except OSError:
+        except OSError as e:
+            print(f"未找到注册表路径 {key_path}，错误信息: {e}")
             return False, "未找到安装路径"
         return False, "未找到安装路径"
 
@@ -51,12 +54,14 @@ def check_software_installed(software_name):
         if installed:
             return True, location
 
+    print(f"未找到与 \"{software_name}\" 匹配的软件")
     return False, "未找到安装路径"
 
 
 def delete_software(software_name, install_path):
     """删除软件及其安装路径"""
     try:
+        print(f"开始删除软件: {software_name}")
         registry_paths = [
             r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
             r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
@@ -73,16 +78,20 @@ def delete_software(software_name, install_path):
                         display_name, _ = winreg.QueryValueEx(subkey, "DisplayName")
                         if software_name.lower() in display_name.lower():
                             winreg.DeleteKey(key, subkey_name)
+                            print(f"成功删除注册表项: {subkey_name}")
                             break
                     except OSError:
                         break
                 winreg.CloseKey(key)
-            except OSError:
+            except OSError as e:
+                print(f"无法删除注册表路径 {key_path}, 错误: {e}")
                 continue
 
         if install_path and os.path.exists(install_path):
             shutil.rmtree(install_path)
+            print(f"成功删除安装路径: {install_path}")
     except Exception as e:
+        print(f"删除软件 \"{software_name}\" 时出现错误: {e}")
         raise e
 
 
@@ -97,7 +106,9 @@ def delete_all_installed_software():
                     delete_software(software_name.strip(), install_path)
                 except Exception as e:
                     messagebox.showerror("错误", f"删除 {software_name} 时出现错误：{str(e)}")
-    messagebox.showinfo("提示", "所有已安装软件已删除。")
+            else:
+                print(f"软件 \"{software_name}\" 未安装，跳过删除")
+    messagebox.showinfo("提示", "所有已安装软件已处理完成。")
 
 
 def start_search():
@@ -114,7 +125,8 @@ def start_search():
                 results += f"，安装路径：{install_path}"
             results += "\n"
     result_label.config(text=results)
-
+    print("查询结果如下:")
+    print(results)
 
 
 # GUI 构建
