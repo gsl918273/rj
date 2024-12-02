@@ -3,8 +3,7 @@ import re
 import tkinter as tk
 from tkinter import messagebox
 import os
-import shutil
-import stat
+import subprocess
 
 
 def escape_regex(s):
@@ -27,29 +26,17 @@ def check_software_installed(software_name):
                         display_name, _ = winreg.QueryValueEx(subkey, "DisplayName")
                         if software_name.lower() in display_name.lower():  # 宽松匹配
                             try:
-                                install_location = winreg.QueryValueEx(subkey, "InstallLocation")[0]
-                                if not install_location:
-                                    raise FileNotFoundError
-                            except FileNotFoundError:
                                 uninstall_string = winreg.QueryValueEx(subkey, "UninstallString")[0]
-                                install_location = parse_install_path_from_uninstall(uninstall_string)
-                            return True, install_location
+                                return True, uninstall_string
+                            except FileNotFoundError:
+                                return True, None
                     except FileNotFoundError:
                         continue
                 except OSError:
                     break
         except OSError:
-            return False, "未找到安装路径"
-        return False, "未找到安装路径"
-
-    def parse_install_path_from_uninstall(uninstall_string):
-        """尝试从卸载字符串中提取安装路径"""
-        match = re.search(r"\"(.*?)\"", uninstall_string)
-        if match:
-            potential_path = match.group(1)
-            if os.path.exists(potential_path):
-                return os.path.dirname(potential_path)
-        return "路径信息不可用"
+            return False, None
+        return False, None
 
     registry_paths = [
         (r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", winreg.HKEY_LOCAL_MACHINE),
@@ -58,39 +45,21 @@ def check_software_installed(software_name):
     ]
 
     for path, root_key in registry_paths:
-        installed, location = search_in_registry(path, root_key)
+        installed, uninstall_cmd = search_in_registry(path, root_key)
         if installed:
-            return True, location
-    return False, "未找到安装路径"
+            return True, uninstall_cmd
+    return False, None
 
 
-def search_in_filesystem(software_name):
-    """在文件系统中查找软件"""
-    potential_paths = [
-        os.environ.get("PROGRAMFILES", ""),
-        os.environ.get("PROGRAMFILES(X86)", ""),
-        os.environ.get("LOCALAPPDATA", ""),
-    ]
-    for path in potential_paths:
-        if path and os.path.exists(path):
-            for root, dirs, files in os.walk(path):
-                for file in files:
-                    if software_name.lower() in file.lower():
-                        return True, root
-    return False, "未找到文件路径"
-
-
-def delete_software(software_name, install_path):
-    """删除软件及其安装路径"""
-    def make_writable(func, path, _):
-        os.chmod(path, stat.S_IWRITE)
-        func(path)
-
+def run_uninstall_command(uninstall_cmd):
+    """运行卸载命令"""
     try:
-        if install_path and os.path.exists(install_path):
-            shutil.rmtree(install_path, onerror=make_writable)
-    except Exception as e:
-        raise e
+        print(f"执行卸载命令: {uninstall_cmd}")
+        subprocess.run(uninstall_cmd, shell=True, check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"卸载失败: {e}")
+        return False
 
 
 def delete_all_installed_software():
@@ -98,17 +67,17 @@ def delete_all_installed_software():
     software_names = text_area.get("1.0", "end").splitlines()
     for software_name in software_names:
         if software_name.strip():
-            installed, install_path = check_software_installed(software_name.strip())
-            if not installed:
-                installed, install_path = search_in_filesystem(software_name.strip())
-            if installed:
-                try:
-                    delete_software(software_name.strip(), install_path)
-                except Exception as e:
-                    messagebox.showerror("错误", f"删除 {software_name} 时出现错误：{str(e)}")
+            installed, uninstall_cmd = check_software_installed(software_name.strip())
+            if installed and uninstall_cmd:
+                if messagebox.askyesno("确认卸载", f"确定要卸载 {software_name.strip()} 吗？"):
+                    success = run_uninstall_command(uninstall_cmd)
+                    if success:
+                        messagebox.showinfo("卸载成功", f"{software_name.strip()} 已成功卸载。")
+                    else:
+                        messagebox.showerror("卸载失败", f"{software_name.strip()} 卸载失败。")
             else:
-                print(f"软件 \"{software_name}\" 未安装，跳过删除")
-    messagebox.showinfo("提示", "所有已安装软件已处理完成。")
+                print(f"软件 \"{software_name}\" 未安装或无法卸载，跳过处理。")
+    messagebox.showinfo("提示", "所有指定的软件处理完成。")
 
 
 def start_search():
@@ -118,13 +87,11 @@ def start_search():
     results = ""
     for software_name in software_names:
         if software_name.strip():
-            installed, install_path = check_software_installed(software_name.strip())
-            if not installed:
-                installed, install_path = search_in_filesystem(software_name.strip())
+            installed, uninstall_cmd = check_software_installed(software_name.strip())
             status = "已安装" if installed else "未安装"
             results += f"{software_name}: {status}"
             if installed:
-                results += f"，安装路径：{install_path}"
+                results += f"，卸载命令：{uninstall_cmd}" if uninstall_cmd else "（无卸载命令）"
             results += "\n"
     result_label.config(text=results)
 
@@ -135,7 +102,6 @@ root.title("软件安装查询工具")
 root.geometry("800x700")
 root.resizable(True, True)
 
-# 使用滚动条和框架
 frame = tk.Frame(root)
 frame.pack(fill=tk.BOTH, expand=True)
 
@@ -159,7 +125,7 @@ result_label.pack(pady=10)
 search_button = tk.Button(inner_frame, text="开始查询", command=start_search)
 search_button.pack(pady=10)
 
-delete_all_button = tk.Button(inner_frame, text="一键删除", command=delete_all_installed_software)
+delete_all_button = tk.Button(inner_frame, text="一键卸载", command=delete_all_installed_software)
 delete_all_button.pack(pady=10)
 
 # 更新滚动区域
