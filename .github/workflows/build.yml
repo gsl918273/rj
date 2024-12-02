@@ -24,11 +24,11 @@ jobs:
 
       # Step 4: Build the Python script to EXE
       - name: Build EXE
-        run: pyinstaller --onefile your_script.py
+        run: pyinstaller --onefile main.py
 
       # Step 5: Upload the generated EXE as an artifact
       - name: Upload EXE
         uses: actions/upload-artifact@v3  # 更新为 v3
         with:
           name: built-exe
-          path: dist/your_script.exe
+          path: dist/main.exe
